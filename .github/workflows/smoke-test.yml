@@ -1,0 +1,38 @@
+name: smoke test
+
+# A short training run on every push and pull request, to catch anything that stops the
+# script from running. It is not long enough to reach the accuracy reported in the README.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU-only PyTorch and the other dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Short training run, graphs only
+        run: >
+          python pinn_mass_spring_damper.py
+          --epochs 300 --lbfgs 20
+          --inv-epochs 300 --inv-lbfgs 20 --inv-warmup 50
+          --no-anim --outdir ci_outputs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-figures
+          path: ci_outputs/

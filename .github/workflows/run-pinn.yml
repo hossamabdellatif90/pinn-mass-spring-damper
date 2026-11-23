@@ -1,0 +1,85 @@
+name: Run PINN
+
+# Full training + graphs + animations on GitHub's servers.
+# Start it from the Actions tab: "Run PINN" -> "Run workflow". Results are attached to the run
+# as a downloadable "pinn-outputs" zip, and the error summary appears on the run's page.
+on:
+  workflow_dispatch:
+    inputs:
+      c:
+        description: "Damping c [N s/m]"
+        required: true
+        default: "4"
+      k:
+        description: "Stiffness k [N/m]"
+        required: true
+        default: "400"
+      x0:
+        description: "Initial displacement x0 [m]"
+        required: true
+        default: "1"
+      v0:
+        description: "Initial velocity v0 [m/s]"
+        required: true
+        default: "0"
+      F0:
+        description: "Forcing amplitude F0 (0 = free vibration)"
+        required: true
+        default: "0"
+      wf:
+        description: "Forcing frequency wf [rad/s]"
+        required: true
+        default: "0"
+      extra:
+        description: "Other options, e.g. --hard-ic --noise 0.1 --no-anim"
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU-only PyTorch and the other dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Train the models and render graphs and animations
+        env:
+          C: ${{ inputs.c }}
+          K: ${{ inputs.k }}
+          X0: ${{ inputs.x0 }}
+          V0: ${{ inputs.v0 }}
+          F0: ${{ inputs.F0 }}
+          WF: ${{ inputs.wf }}
+          EXTRA: ${{ inputs.extra }}
+        run: |
+          python pinn_mass_spring_damper.py \
+            --c "$C" --k "$K" --x0 "$X0" --v0 "$V0" --F0 "$F0" --wf "$WF" \
+            --outdir pinn_outputs $EXTRA
+
+      - name: Show the results on the run page
+        if: always()
+        run: |
+          {
+            echo "## PINN results"
+            echo '```'
+            cat pinn_outputs/results.txt 2>/dev/null || echo "No results.txt - see the training step's log."
+            echo '```'
+            echo "Download **pinn-outputs** under Artifacts for the graphs and animations."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pinn-outputs
+          path: pinn_outputs/
+          if-no-files-found: warn
