@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Physics-informed neural networks for a mass-spring-damper</title>
+  <meta name="description" content="A PyTorch PINN that solves the damped mass-spring equation from physics alone and recovers unknown damping and stiffness from noisy data. Code, graphs and animations.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Physics-informed neural networks for a mass-spring-damper">
+  <meta property="og:description" content="Solve m x'' + c x' + k x = F(t) with a neural network trained on the equation itself, then identify c and k from noisy measurements.">
+  <meta name="theme-color" content="#fcfcfb">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23fcfcfb'/%3E%3Cpath d='M3 11h3l2-4 3 8 3-8 3 8 2-4h2' fill='none' stroke='%231f2a36' stroke-width='1.8' stroke-linejoin='round'/%3E%3Crect x='21' y='5' width='9' height='13' rx='1.5' fill='%232a78d6'/%3E%3Cpath d='M2 22c3-7 5 7 8 0s5 6 8 0 5 4 8 0 3 2 4 0' fill='none' stroke='%232a78d6' stroke-width='1.8'/%3E%3C/svg%3E">
+  <link rel="preload" href="vendor/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="vendor/fonts/source-serif-4-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="site.css">
+  <script defer src="vendor/katex/katex.min.js"></script>
+  <script defer src="vendor/katex/auto-render.min.js"></script>
+</head>
+<body>
+
+<header class="wrap site-header">
+  <a class="wordmark" href="./">pinn-mass-spring-damper</a>
+  <nav aria-label="Sections">
+    <a href="#method">Method</a>
+    <a href="#inverse">Finding c and k</a>
+    <a href="#run">Run it</a>
+    <a href="https://github.com/" data-repo-link>Source</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- ===================================================================== -->
+  <section class="hero" aria-labelledby="title">
+    <h1 id="title">Physics-informed neural networks for a <span class="nowrap">mass-spring-damper</span></h1>
+
+    <svg class="trace" viewBox="0 0 1200 120" preserveAspectRatio="none" role="img"
+         aria-label="Damped oscillation x(t) over one second: the exact solution and the PINN prediction overlap.">
+      <path class="exact" d="M6.0,6.0 L8.8,6.1 L11.7,6.2 L14.5,6.5 L17.3,7.0 L20.2,7.5 L23.0,8.2 L25.8,8.9 L28.7,9.8 L31.5,10.8 L34.4,11.8 L37.2,13.0 L40.0,14.3 L42.9,15.7 L45.7,17.1 L48.5,18.7 L51.4,20.3 L54.2,22.0 L57.0,23.7 L59.9,25.5 L62.7,27.4 L65.5,29.4 L68.4,31.4 L71.2,33.4 L74.0,35.5 L76.9,37.6 L79.7,39.7 L82.6,41.9 L85.4,44.1 L88.2,46.3 L91.1,48.5 L93.9,50.8 L96.7,53.0 L99.6,55.2 L102.4,57.4 L105.2,59.6 L108.1,61.8 L110.9,63.9 L113.7,66.0 L116.6,68.1 L119.4,70.2 L122.2,72.2 L125.1,74.1 L127.9,76.0 L130.8,77.9 L133.6,79.7 L136.4,81.4 L139.3,83.1 L142.1,84.7 L144.9,86.2 L147.8,87.7 L150.6,89.0 L153.4,90.3 L156.3,91.6 L159.1,92.7 L161.9,93.7 L164.8,94.7 L167.6,95.6 L170.4,96.4 L173.3,97.1 L176.1,97.7 L179.0,98.2 L181.8,98.6 L184.6,98.9 L187.5,99.2 L190.3,99.3 L193.1,99.4 L196.0,99.3 L198.8,99.2 L201.6,99.0 L204.5,98.7 L207.3,98.3 L210.1,97.9 L213.0,97.3 L215.8,96.7 L218.6,96.0 L221.5,95.2 L224.3,94.4 L227.2,93.5 L230.0,92.5 L232.8,91.4 L235.7,90.3 L238.5,89.2 L241.3,87.9 L244.2,86.7 L247.0,85.3 L249.8,84.0 L252.7,82.5 L255.5,81.1 L258.3,79.6 L261.2,78.1 L264.0,76.6 L266.8,75.0 L269.7,73.4 L272.5,71.8 L275.4,70.2 L278.2,68.6 L281.0,67.0 L283.9,65.4 L286.7,63.7 L289.5,62.1 L292.4,60.5 L295.2,58.9 L298.0,57.4 L300.9,55.8 L303.7,54.3 L306.5,52.8 L309.4,51.3 L312.2,49.9 L315.1,48.5 L317.9,47.2 L320.7,45.8 L323.6,44.6 L326.4,43.3 L329.2,42.2 L332.1,41.1 L334.9,40.0 L337.7,39.0 L340.6,38.0 L343.4,37.1 L346.2,36.3 L349.1,35.5 L351.9,34.8 L354.7,34.1 L357.6,33.6 L360.4,33.0 L363.3,32.6 L366.1,32.2 L368.9,31.9 L371.8,31.6 L374.6,31.5 L377.4,31.3 L380.3,31.3 L383.1,31.3 L385.9,31.4 L388.8,31.5 L391.6,31.7 L394.4,32.0 L397.3,32.3 L400.1,32.7 L402.9,33.2 L405.8,33.7 L408.6,34.2 L411.5,34.8 L414.3,35.5 L417.1,36.2 L420.0,37.0 L422.8,37.8 L425.6,38.6 L428.5,39.5 L431.3,40.4 L434.1,41.4 L437.0,42.4 L439.8,43.4 L442.6,44.5 L445.5,45.5 L448.3,46.6 L451.1,47.8 L454.0,48.9 L456.8,50.0 L459.7,51.2 L462.5,52.4 L465.3,53.6 L468.2,54.7 L471.0,55.9 L473.8,57.1 L476.7,58.3 L479.5,59.4 L482.3,60.6 L485.2,61.7 L488.0,62.9 L490.8,64.0 L493.7,65.1 L496.5,66.2 L499.3,67.2 L502.2,68.2 L505.0,69.2 L507.9,70.2 L510.7,71.1 L513.5,72.0 L516.4,72.9 L519.2,73.7 L522.0,74.5 L524.9,75.2 L527.7,75.9 L530.5,76.6 L533.4,77.2 L536.2,77.8 L539.0,78.3 L541.9,78.8 L544.7,79.2 L547.5,79.6 L550.4,79.9 L553.2,80.2 L556.1,80.5 L558.9,80.7 L561.7,80.8 L564.6,80.9 L567.4,80.9 L570.2,80.9 L573.1,80.9 L575.9,80.8 L578.7,80.6 L581.6,80.5 L584.4,80.2 L587.2,79.9 L590.1,79.6 L592.9,79.3 L595.7,78.9 L598.6,78.4 L601.4,77.9 L604.3,77.4 L607.1,76.9 L609.9,76.3 L612.8,75.7 L615.6,75.0 L618.4,74.4 L621.3,73.7 L624.1,73.0 L626.9,72.2 L629.8,71.4 L632.6,70.7 L635.4,69.9 L638.3,69.1 L641.1,68.2 L643.9,67.4 L646.8,66.5 L649.6,65.7 L652.5,64.8 L655.3,64.0 L658.1,63.1 L661.0,62.2 L663.8,61.4 L666.6,60.5 L669.5,59.7 L672.3,58.8 L675.1,58.0 L678.0,57.2 L680.8,56.4 L683.6,55.6 L686.5,54.9 L689.3,54.1 L692.1,53.4 L695.0,52.7 L697.8,52.0 L700.7,51.3 L703.5,50.7 L706.3,50.1 L709.2,49.5 L712.0,49.0 L714.8,48.5 L717.7,48.0 L720.5,47.5 L723.3,47.1 L726.2,46.7 L729.0,46.3 L731.8,46.0 L734.7,45.7 L737.5,45.5 L740.3,45.3 L743.2,45.1 L746.0,45.0 L748.9,44.8 L751.7,44.8 L754.5,44.7 L757.4,44.7 L760.2,44.8 L763.0,44.8 L765.9,44.9 L768.7,45.1 L771.5,45.2 L774.4,45.4 L777.2,45.7 L780.0,45.9 L782.9,46.2 L785.7,46.5 L788.5,46.9 L791.4,47.2 L794.2,47.6 L797.1,48.0 L799.9,48.5 L802.7,49.0 L805.6,49.4 L808.4,49.9 L811.2,50.5 L814.1,51.0 L816.9,51.6 L819.7,52.1 L822.6,52.7 L825.4,53.3 L828.2,53.9 L831.1,54.5 L833.9,55.1 L836.7,55.8 L839.6,56.4 L842.4,57.0 L845.3,57.6 L848.1,58.3 L850.9,58.9 L853.8,59.5 L856.6,60.1 L859.4,60.8 L862.3,61.4 L865.1,61.9 L867.9,62.5 L870.8,63.1 L873.6,63.7 L876.4,64.2 L879.3,64.8 L882.1,65.3 L884.9,65.8 L887.8,66.3 L890.6,66.7 L893.5,67.2 L896.3,67.6 L899.1,68.0 L902.0,68.4 L904.8,68.7 L907.6,69.1 L910.5,69.4 L913.3,69.7 L916.1,69.9 L919.0,70.2 L921.8,70.4 L924.6,70.6 L927.5,70.7 L930.3,70.8 L933.2,71.0 L936.0,71.0 L938.8,71.1 L941.7,71.1 L944.5,71.1 L947.3,71.1 L950.2,71.1 L953.0,71.0 L955.8,70.9 L958.7,70.8 L961.5,70.7 L964.3,70.5 L967.2,70.3 L970.0,70.1 L972.8,69.9 L975.7,69.6 L978.5,69.4 L981.4,69.1 L984.2,68.8 L987.0,68.4 L989.9,68.1 L992.7,67.8 L995.5,67.4 L998.4,67.0 L1001.2,66.6 L1004.0,66.2 L1006.9,65.8 L1009.7,65.4 L1012.5,64.9 L1015.4,64.5 L1018.2,64.1 L1021.0,63.6 L1023.9,63.2 L1026.7,62.7 L1029.6,62.2 L1032.4,61.8 L1035.2,61.3 L1038.1,60.9 L1040.9,60.4 L1043.7,60.0 L1046.6,59.5 L1049.4,59.1 L1052.2,58.6 L1055.1,58.2 L1057.9,57.8 L1060.7,57.4 L1063.6,57.0 L1066.4,56.6 L1069.2,56.2 L1072.1,55.8 L1074.9,55.5 L1077.8,55.2 L1080.6,54.8 L1083.4,54.5 L1086.3,54.2 L1089.1,53.9 L1091.9,53.7 L1094.8,53.4 L1097.6,53.2 L1100.4,53.0 L1103.3,52.8 L1106.1,52.6 L1108.9,52.5 L1111.8,52.3 L1114.6,52.2 L1117.4,52.1 L1120.3,52.0 L1123.1,52.0 L1126.0,51.9 L1128.8,51.9 L1131.6,51.9 L1134.5,51.9 L1137.3,51.9 L1140.1,52.0 L1143.0,52.0 L1145.8,52.1 L1148.6,52.2 L1151.5,52.3 L1154.3,52.5 L1157.1,52.6 L1160.0,52.8 L1162.8,53.0 L1165.6,53.1 L1168.5,53.4 L1171.3,53.6 L1174.2,53.8 L1177.0,54.1 L1179.8,54.3 L1182.7,54.6 L1185.5,54.8 L1188.3,55.1 L1191.2,55.4 L1194.0,55.7"/>
+      <path class="pinn" pathLength="1" d="M6.0,6.0 L8.8,6.1 L11.7,6.2 L14.5,6.5 L17.3,7.0 L20.2,7.5 L23.0,8.2 L25.8,8.9 L28.7,9.8 L31.5,10.8 L34.4,11.8 L37.2,13.0 L40.0,14.3 L42.9,15.7 L45.7,17.1 L48.5,18.7 L51.4,20.3 L54.2,22.0 L57.0,23.7 L59.9,25.5 L62.7,27.4 L65.5,29.4 L68.4,31.4 L71.2,33.4 L74.0,35.5 L76.9,37.6 L79.7,39.7 L82.6,41.9 L85.4,44.1 L88.2,46.3 L91.1,48.5 L93.9,50.8 L96.7,53.0 L99.6,55.2 L102.4,57.4 L105.2,59.6 L108.1,61.8 L110.9,63.9 L113.7,66.0 L116.6,68.1 L119.4,70.2 L122.2,72.2 L125.1,74.1 L127.9,76.0 L130.8,77.9 L133.6,79.7 L136.4,81.4 L139.3,83.1 L142.1,84.7 L144.9,86.2 L147.8,87.7 L150.6,89.0 L153.4,90.3 L156.3,91.6 L159.1,92.7 L161.9,93.7 L164.8,94.7 L167.6,95.6 L170.4,96.4 L173.3,97.1 L176.1,97.7 L179.0,98.2 L181.8,98.6 L184.6,98.9 L187.5,99.2 L190.3,99.3 L193.1,99.4 L196.0,99.3 L198.8,99.2 L201.6,99.0 L204.5,98.7 L207.3,98.3 L210.1,97.9 L213.0,97.3 L215.8,96.7 L218.6,96.0 L221.5,95.2 L224.3,94.4 L227.2,93.5 L230.0,92.5 L232.8,91.4 L235.7,90.3 L238.5,89.2 L241.3,87.9 L244.2,86.7 L247.0,85.3 L249.8,84.0 L252.7,82.5 L255.5,81.1 L258.3,79.6 L261.2,78.1 L264.0,76.6 L266.8,75.0 L269.7,73.4 L272.5,71.8 L275.4,70.2 L278.2,68.6 L281.0,67.0 L283.9,65.4 L286.7,63.7 L289.5,62.1 L292.4,60.5 L295.2,58.9 L298.0,57.4 L300.9,55.8 L303.7,54.3 L306.5,52.8 L309.4,51.3 L312.2,49.9 L315.1,48.5 L317.9,47.2 L320.7,45.8 L323.6,44.6 L326.4,43.3 L329.2,42.2 L332.1,41.1 L334.9,40.0 L337.7,39.0 L340.6,38.0 L343.4,37.1 L346.2,36.3 L349.1,35.5 L351.9,34.8 L354.7,34.1 L357.6,33.6 L360.4,33.0 L363.3,32.6 L366.1,32.2 L368.9,31.9 L371.8,31.6 L374.6,31.5 L377.4,31.3 L380.3,31.3 L383.1,31.3 L385.9,31.4 L388.8,31.5 L391.6,31.7 L394.4,32.0 L397.3,32.3 L400.1,32.7 L402.9,33.2 L405.8,33.7 L408.6,34.2 L411.5,34.8 L414.3,35.5 L417.1,36.2 L420.0,37.0 L422.8,37.8 L425.6,38.6 L428.5,39.5 L431.3,40.4 L434.1,41.4 L437.0,42.4 L439.8,43.4 L442.6,44.5 L445.5,45.5 L448.3,46.6 L451.1,47.8 L454.0,48.9 L456.8,50.0 L459.7,51.2 L462.5,52.4 L465.3,53.6 L468.2,54.7 L471.0,55.9 L473.8,57.1 L476.7,58.3 L479.5,59.4 L482.3,60.6 L485.2,61.7 L488.0,62.9 L490.8,64.0 L493.7,65.1 L496.5,66.2 L499.3,67.2 L502.2,68.2 L505.0,69.2 L507.9,70.2 L510.7,71.1 L513.5,72.0 L516.4,72.9 L519.2,73.7 L522.0,74.5 L524.9,75.2 L527.7,75.9 L530.5,76.6 L533.4,77.2 L536.2,77.8 L539.0,78.3 L541.9,78.8 L544.7,79.2 L547.5,79.6 L550.4,79.9 L553.2,80.2 L556.1,80.5 L558.9,80.7 L561.7,80.8 L564.6,80.9 L567.4,80.9 L570.2,80.9 L573.1,80.9 L575.9,80.8 L578.7,80.6 L581.6,80.5 L584.4,80.2 L587.2,79.9 L590.1,79.6 L592.9,79.3 L595.7,78.9 L598.6,78.4 L601.4,77.9 L604.3,77.4 L607.1,76.9 L609.9,76.3 L612.8,75.7 L615.6,75.0 L618.4,74.4 L621.3,73.7 L624.1,73.0 L626.9,72.2 L629.8,71.4 L632.6,70.7 L635.4,69.9 L638.3,69.1 L641.1,68.2 L643.9,67.4 L646.8,66.5 L649.6,65.7 L652.5,64.8 L655.3,64.0 L658.1,63.1 L661.0,62.2 L663.8,61.4 L666.6,60.5 L669.5,59.7 L672.3,58.8 L675.1,58.0 L678.0,57.2 L680.8,56.4 L683.6,55.6 L686.5,54.9 L689.3,54.1 L692.1,53.4 L695.0,52.7 L697.8,52.0 L700.7,51.3 L703.5,50.7 L706.3,50.1 L709.2,49.5 L712.0,49.0 L714.8,48.5 L717.7,48.0 L720.5,47.5 L723.3,47.1 L726.2,46.7 L729.0,46.3 L731.8,46.0 L734.7,45.7 L737.5,45.5 L740.3,45.3 L743.2,45.1 L746.0,45.0 L748.9,44.8 L751.7,44.8 L754.5,44.7 L757.4,44.7 L760.2,44.8 L763.0,44.8 L765.9,44.9 L768.7,45.1 L771.5,45.2 L774.4,45.4 L777.2,45.7 L780.0,45.9 L782.9,46.2 L785.7,46.5 L788.5,46.9 L791.4,47.2 L794.2,47.6 L797.1,48.0 L799.9,48.5 L802.7,49.0 L805.6,49.4 L808.4,49.9 L811.2,50.5 L814.1,51.0 L816.9,51.6 L819.7,52.1 L822.6,52.7 L825.4,53.3 L828.2,53.9 L831.1,54.5 L833.9,55.1 L836.7,55.8 L839.6,56.4 L842.4,57.0 L845.3,57.6 L848.1,58.3 L850.9,58.9 L853.8,59.5 L856.6,60.1 L859.4,60.8 L862.3,61.4 L865.1,61.9 L867.9,62.5 L870.8,63.1 L873.6,63.7 L876.4,64.2 L879.3,64.8 L882.1,65.3 L884.9,65.8 L887.8,66.3 L890.6,66.7 L893.5,67.2 L896.3,67.6 L899.1,68.0 L902.0,68.4 L904.8,68.7 L907.6,69.1 L910.5,69.4 L913.3,69.7 L916.1,69.9 L919.0,70.2 L921.8,70.4 L924.6,70.6 L927.5,70.7 L930.3,70.8 L933.2,71.0 L936.0,71.0 L938.8,71.1 L941.7,71.1 L944.5,71.1 L947.3,71.1 L950.2,71.1 L953.0,71.0 L955.8,70.9 L958.7,70.8 L961.5,70.7 L964.3,70.5 L967.2,70.3 L970.0,70.1 L972.8,69.9 L975.7,69.6 L978.5,69.4 L981.4,69.1 L984.2,68.8 L987.0,68.4 L989.9,68.1 L992.7,67.8 L995.5,67.4 L998.4,67.0 L1001.2,66.6 L1004.0,66.2 L1006.9,65.8 L1009.7,65.4 L1012.5,64.9 L1015.4,64.5 L1018.2,64.1 L1021.0,63.6 L1023.9,63.2 L1026.7,62.7 L1029.6,62.2 L1032.4,61.8 L1035.2,61.3 L1038.1,60.9 L1040.9,60.4 L1043.7,60.0 L1046.6,59.5 L1049.4,59.1 L1052.2,58.6 L1055.1,58.2 L1057.9,57.8 L1060.7,57.4 L1063.6,57.0 L1066.4,56.6 L1069.2,56.2 L1072.1,55.8 L1074.9,55.5 L1077.8,55.2 L1080.6,54.8 L1083.4,54.5 L1086.3,54.2 L1089.1,53.9 L1091.9,53.7 L1094.8,53.4 L1097.6,53.2 L1100.4,53.0 L1103.3,52.8 L1106.1,52.6 L1108.9,52.5 L1111.8,52.3 L1114.6,52.2 L1117.4,52.1 L1120.3,52.0 L1123.1,52.0 L1126.0,51.9 L1128.8,51.9 L1131.6,51.9 L1134.5,51.9 L1137.3,51.9 L1140.1,52.0 L1143.0,52.0 L1145.8,52.1 L1148.6,52.2 L1151.5,52.3 L1154.3,52.5 L1157.1,52.6 L1160.0,52.8 L1162.8,53.0 L1165.6,53.1 L1168.5,53.4 L1171.3,53.6 L1174.2,53.8 L1177.0,54.1 L1179.8,54.3 L1182.7,54.6 L1185.5,54.8 L1188.3,55.1 L1191.2,55.4 L1194.0,55.7"/>
+    </svg>
+
+    <div class="hero-intro">
+      <p class="lede">
+        A neural network learns the motion of a damped spring from the equation of motion alone,
+        with no measured data, and lands within 0.12% of the exact answer. A second network watches
+        40 noisy measurements and works out the damping and stiffness that produced them.
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#run">Run it yourself</a>
+        <a class="btn btn-secondary" href="https://github.com/" data-repo-link>View the source</a>
+      </div>
+    </div>
+
+    <figure>
+      <video src="assets/anim2_mass_spring_damper.mp4" poster="assets/anim2_mass_spring_damper-poster.jpg"
+             width="1050" height="660" autoplay muted loop playsinline preload="auto"
+             aria-label="Animated spring, damper and mass moving with the PINN solution, beside the displacement curve and phase portrait.">
+        <img src="assets/anim2_mass_spring_damper.gif" width="1050" height="660"
+             alt="Animated spring, damper and mass moving with the PINN solution.">
+      </video>
+      <figcaption>
+        Every frame is the trained PINN's prediction: the block's position is \(x(t)\), and the
+        curves trace displacement and velocity as they are produced
+        (<span class="key key-pinn"></span>PINN, <span class="key key-exact"></span>exact solution).
+        Played back six times slower than real time.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="system" aria-labelledby="system-h">
+    <h2 id="system-h">The system</h2>
+    <p>
+      A block of mass \(m\) slides on a frictionless floor, held to a wall by a spring of stiffness
+      \(k\) and a viscous damper with coefficient \(c\). Newton's second law gives one ordinary
+      differential equation for the displacement \(x(t)\):
+    </p>
+    <div class="equation">
+      $$ m\,\ddot{x}(t) + c\,\dot{x}(t) + k\,x(t) = F(t), \qquad x(0) = x_0,\quad \dot{x}(0) = v_0 $$
+    </div>
+    <p>
+      With no external force, the behaviour is set by the natural frequency
+      \(\omega_0 = \sqrt{k/m}\) and the damping ratio \(\zeta = c / (2\sqrt{km})\). The default
+      case is underdamped: it rings for about three cycles while the amplitude decays.
+    </p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Meaning</th><th class="num">Default</th><th>Flag</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>\(m\)</td><td>mass</td><td class="num">1 kg</td><td><code>--m</code></td></tr>
+          <tr><td>\(c\)</td><td>damping coefficient</td><td class="num">4 N·s/m</td><td><code>--c</code></td></tr>
+          <tr><td>\(k\)</td><td>spring stiffness</td><td class="num">400 N/m</td><td><code>--k</code></td></tr>
+          <tr><td>\(x_0,\ v_0\)</td><td>initial displacement and velocity</td><td class="num">1 m, 0 m/s</td><td><code>--x0</code>, <code>--v0</code></td></tr>
+          <tr><td>\(F(t)\)</td><td>external force \(F_0\cos(\omega_f t)\)</td><td class="num">none</td><td><code>--F0</code>, <code>--wf</code></td></tr>
+          <tr><td>\(T\)</td><td>time window</td><td class="num">1 s</td><td><code>--T</code></td></tr>
+          <tr><td>\(\omega_0,\ \zeta\)</td><td>natural frequency, damping ratio</td><td class="num">20 rad/s, 0.1</td><td>derived</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The script compares every model against the closed-form solution (underdamped, critically
+      damped or overdamped, whichever applies) or, when a force is applied, against a high-accuracy
+      Runge–Kutta integration.
+    </p>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="why" aria-labelledby="why-h">
+    <h2 id="why-h">Why put the physics in the loss</h2>
+    <p>
+      An ordinary network trained on ten points from the first 0.4 seconds fits those points well
+      and then has nothing to go on. Past the last point its prediction heads off the chart, and its
+      error over the full second is 341%.
+    </p>
+    <p>
+      The PINN is given no measured points at all. It sees only the equation, checked at 200 times
+      spread across the window, and the two initial conditions. Its error over the same second is
+      0.12%.
+    </p>
+    <figure>
+      <img src="assets/fig1_nn_vs_pinn.png" width="1715" height="624" loading="lazy"
+           alt="Left: a data-only network fits ten points then diverges. Right: the PINN matches the exact damped oscillation across the whole interval.">
+      <figcaption>
+        <span class="key key-nn"></span>Data-only network and <span class="key key-pinn"></span>PINN
+        against the <span class="key key-exact"></span>exact solution. Green ticks mark the PINN's
+        collocation times, where the equation is enforced.
+      </figcaption>
+    </figure>
+    <figure>
+      <video src="assets/anim1_training.mp4" poster="assets/anim1_training-poster.jpg"
+             width="1050" height="660" muted loop playsinline controls preload="metadata"
+             aria-label="Training of both networks: the data-only network diverges outside its data while the PINN gradually locks onto the exact solution.">
+        <img src="assets/anim1_training.gif" width="1050" height="660" alt="Training animation of both networks.">
+      </video>
+      <figcaption>
+        Both networks during training. The PINN finds the first cycle early, then extends it across
+        the window as the physics loss falls; the dashed line marks the switch from Adam to L-BFGS.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="method" aria-labelledby="method-h">
+    <h2 id="method-h">How the loss is built</h2>
+    <p>
+      The network takes a time \(t\) and returns a displacement \(\hat{x}(t)\): three hidden layers
+      of 32 tanh units. Automatic differentiation gives \(\dot{\hat{x}}\) and \(\ddot{\hat{x}}\)
+      exactly, so the equation can be checked at any time without a mesh. The residual is
+    </p>
+    <div class="equation">
+      $$ r(t) = \frac{m\,\ddot{\hat{x}}(t) + c\,\dot{\hat{x}}(t) + k\,\hat{x}(t) - F(t)}{k\,x_{\mathrm{ref}}} $$
+    </div>
+    <p>
+      and training minimises the mean squared residual at the collocation times plus the error in
+      the initial conditions:
+    </p>
+    <div class="equation">
+      $$ \mathcal{L} = \underbrace{\frac{1}{N}\sum_{i=1}^{N} r(t_i)^2}_{\text{physics}}
+         \;+\; \lambda_{\mathrm{ic}} \underbrace{\left[\left(\frac{\hat{x}(0)-x_0}{x_{\mathrm{ref}}}\right)^{\!2}
+         + \left(\frac{\dot{\hat{x}}(0)-v_0}{\omega_0\,x_{\mathrm{ref}}}\right)^{\!2}\right]}_{\text{initial conditions}} $$
+    </div>
+    <p>
+      Here \(x_{\mathrm{ref}}\) is the size of the motion, the largest of \(|x_0|\),
+      \(|v_0|/\omega_0\) and \(F_0/k\), and \(\lambda_{\mathrm{ic}} = 10\).
+    </p>
+
+    <h3>What made it train well</h3>
+    <ul>
+      <li>
+        <strong>Every term is dimensionless.</strong> Dividing by \(k\,x_{\mathrm{ref}}\) turns the
+        residual into \(\ddot{x}/\omega_0^2 + 2\zeta\dot{x}/\omega_0 + x\), so the physics and
+        initial-condition terms are the same order of magnitude whatever units or parameters you use.
+      </li>
+      <li>
+        <strong>Adam first, then L-BFGS.</strong> With a learning rate of 10<sup>−3</sup> and a short
+        L-BFGS stage, the PINN stalled at about 15% error, damping the motion too quickly. Starting
+        Adam at 3×10<sup>−3</sup> (decaying tenfold over 15,000 steps) and finishing with up to 5,000
+        L-BFGS iterations brought it to 0.12%.
+      </li>
+      <li>
+        <strong>Optional hard initial conditions.</strong> With <code>--hard-ic</code> the output is
+        written as \(\hat{x}(t) = x_0 + v_0 t + (t/T)^2 N(t)\), which satisfies both initial
+        conditions exactly and leaves only the physics term to train.
+      </li>
+    </ul>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="checks" aria-labelledby="checks-h">
+    <h2 id="checks-h">Checking the answer</h2>
+    <p>
+      Matching \(x(t)\) is not the whole test. The velocity the network implies, the size of the
+      leftover residual and the energy it dissipates should all agree with the exact solution too.
+    </p>
+    <figure>
+      <img src="assets/fig3_velocity_error_residual.png" width="2009" height="555" loading="lazy"
+           alt="Velocity from autograd matches the exact velocity; pointwise errors and the normalised residual stay small across the window.">
+      <figcaption>
+        Velocity from automatic differentiation, the pointwise error in displacement and velocity,
+        and the remaining equation residual across the window.
+      </figcaption>
+    </figure>
+    <figure>
+      <img src="assets/fig4_phase_energy.png" width="1709" height="615" loading="lazy"
+           alt="Phase portrait spiral and decaying mechanical energy, PINN overlapping the exact solution.">
+      <figcaption>
+        The phase portrait spirals inward and the mechanical energy
+        \(\tfrac12 m\dot{x}^2 + \tfrac12 k x^2\) decays in steps, as the damper removes energy
+        fastest when the block moves fastest.
+      </figcaption>
+    </figure>
+    <figure>
+      <img src="assets/fig2_training_loss.png" width="1709" height="555" loading="lazy"
+           alt="Loss curves: PINN total, physics and initial-condition loss on a log scale, and the data-only network's loss.">
+      <figcaption>
+        Training loss for both networks. A low loss for the data-only network says nothing about
+        its predictions away from the data.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="inverse" aria-labelledby="inverse-h">
+    <h2 id="inverse-h">Finding c and k from noisy data</h2>
+    <p>
+      The same idea runs backwards. Given 40 displacement measurements with 4% noise and starting
+      guesses of \(c = 1\) and \(k = 150\), a second PINN learns the motion and both parameters at
+      once. The loss now fits the data and asks the fit to obey the equation with the current
+      estimates of \(c\) and \(k\):
+    </p>
+    <div class="equation">
+      $$ \mathcal{L} = \frac{1}{M}\sum_{j=1}^{M}\left(\frac{\hat{x}(t_j)-\tilde{x}_j}{x_{\mathrm{ref}}}\right)^{\!2}
+         + \lambda_{\mathrm{phys}}\,\frac{1}{N}\sum_{i=1}^{N} r(t_i;\,c,k)^2,
+         \qquad c = e^{\gamma},\; k = e^{\kappa} $$
+    </div>
+    <p>
+      \(c\) and \(k\) are trained as logarithms so they stay positive, and \(\lambda_{\mathrm{phys}}
+      = 100\). For the first 2,000 steps the network fits only the data. Without that warm-up, the
+      parameters chased a still-random network and settled on a wrong, heavily damped solution.
+    </p>
+    <figure>
+      <video src="assets/anim3_inverse_pinn.mp4" poster="assets/anim3_inverse_pinn-poster.jpg"
+             width="1050" height="520" muted loop playsinline controls preload="metadata"
+             aria-label="Inverse PINN training: the fit converges to the noisy data while the learned c and k move to their true values.">
+        <img src="assets/anim3_inverse_pinn.gif" width="1050" height="520" alt="Inverse PINN training animation.">
+      </video>
+      <figcaption>
+        The estimates overshoot while the network is still finding the shape of the response, then
+        settle once fit and physics agree. The gray band marks the data-only warm-up.
+      </figcaption>
+    </figure>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th class="num">True</th><th class="num">Starting guess</th><th class="num">Learned</th><th class="num">Error</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>damping \(c\) [N·s/m]</td><td class="num">4</td><td class="num">1</td><td class="num">4.003</td><td class="num">0.07%</td></tr>
+          <tr><td>stiffness \(k\) [N/m]</td><td class="num">400</td><td class="num">150</td><td class="num">402.1</td><td class="num">0.53%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The mass is taken as known. In free vibration, multiplying \(m\), \(c\) and \(k\) by the same
+      factor gives exactly the same motion, so only \(c/m\) and \(k/m\) can be identified from
+      displacement alone. With other random noise draws, \(c\) came out within about 2–3% and
+      \(k\) within about 1%, close to what a direct least-squares fit of the exact solution gets
+      from the same data.
+    </p>
+    <figure>
+      <img src="assets/fig5_inverse_parameters.png" width="1602" height="669" loading="lazy"
+           alt="Inverse PINN fit through noisy measurements, and convergence of c to 4.003 and k to 402.1.">
+      <figcaption>Final fit and the full path of both estimates during training.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="results" aria-labelledby="results-h">
+    <h2 id="results-h">Results</h2>
+    <p>Default settings, CPU, double precision. Errors are relative L2 against the exact solution over the full second.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Model</th><th>What it was trained on</th><th class="num">Error in \(x(t)\)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Data-only network</td><td>10 exact points from the first 0.4 s</td><td class="num">341%</td></tr>
+          <tr><td>Forward PINN</td><td>equation and initial conditions, no data</td><td class="num">0.12%</td></tr>
+          <tr><td>Forward PINN, forced (<code>--F0 200 --wf 30</code>)</td><td>equation and initial conditions, no data</td><td class="num">0.005%</td></tr>
+          <tr><td>Inverse PINN</td><td>40 points with 4% noise, \(c\) and \(k\) unknown</td><td class="num">1.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="run" aria-labelledby="run-h">
+    <h2 id="run-h">Run it yourself</h2>
+    <p>One script, Python 3.9 or newer. A full run with all three animations takes a few minutes on a laptop CPU; no GPU needed.</p>
+    <ol class="steps">
+      <li>
+        Get the code.
+        <pre><code>git clone https://github.com/<span data-repo-name>YOUR-USERNAME/pinn-mass-spring-damper</span>.git
+cd pinn-mass-spring-damper</code></pre>
+      </li>
+      <li>
+        Install the dependencies. The CPU build of PyTorch is a much smaller download.
+        <pre><code>pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt</code></pre>
+      </li>
+      <li>
+        Train and render. Graphs, animations, the trained model and a <code>results.txt</code>
+        summary go to <code>pinn_outputs/</code>.
+        <pre><code>python pinn_mass_spring_damper.py</code></pre>
+      </li>
+    </ol>
+
+    <p>
+      No Python on your computer? Open the repository's <strong>Actions</strong> tab, choose
+      <strong>Run PINN</strong>, then <strong>Run workflow</strong>. GitHub trains the models with
+      the parameters you enter and attaches every graph and animation to the run as a download.
+    </p>
+
+    <h3>Common variations</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>--c 1 --k 100</code></td><td>a different oscillator</td></tr>
+          <tr><td><code>--c 50</code></td><td>overdamped: no oscillation</td></tr>
+          <tr><td><code>--F0 200 --wf 30</code></td><td>forced vibration, \(F(t) = 200\cos(30t)\)</td></tr>
+          <tr><td><code>--x0 0 --v0 5</code></td><td>start at rest position with an initial push</td></tr>
+          <tr><td><code>--hard-ic</code></td><td>build the initial conditions into the network</td></tr>
+          <tr><td><code>--noise 0.1 --n-obs 20</code></td><td>harder inverse problem: noisier, fewer measurements</td></tr>
+          <tr><td><code>--no-anim</code></td><td>graphs only, much faster</td></tr>
+          <tr><td><code>--video both</code></td><td>save MP4 as well as GIF (needs ffmpeg)</td></tr>
+          <tr><td><code>--help</code></td><td>list all options with their defaults</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <section id="references" aria-labelledby="refs-h">
+    <h2 id="refs-h">References</h2>
+    <ul class="refs">
+      <li>
+        M. Raissi, P. Perdikaris and G. E. Karniadakis, “Physics-informed neural networks: A deep
+        learning framework for solving forward and inverse problems involving nonlinear partial
+        differential equations,” <em>Journal of Computational Physics</em> 378 (2019) 686–707.
+        <a href="https://doi.org/10.1016/j.jcp.2018.10.045">doi:10.1016/j.jcp.2018.10.045</a>
+      </li>
+      <li>
+        I. E. Lagaris, A. Likas and D. I. Fotiadis, “Artificial neural networks for solving ordinary
+        and partial differential equations,” <em>IEEE Transactions on Neural Networks</em> 9(5)
+        (1998) 987–1000. The source of the hard initial-condition trick.
+      </li>
+      <li>
+        B. Moseley, “<a href="https://benmoseley.blog/my-research/so-what-is-a-physics-informed-neural-network/">So, what is a physics-informed neural network?</a>”
+        and its <a href="https://github.com/benmoseley/harmonic-oscillator-pinn">companion code</a>,
+        which popularised the damped oscillator as a first PINN example.
+      </li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="wrap site-footer">
+  <p>Code released under the MIT License. <a href="https://github.com/" data-repo-link>Source on GitHub</a>.</p>
+  <p>Set in Archivo, Source Serif 4 and JetBrains Mono (SIL Open Font License). Equations rendered with KaTeX.</p>
+</footer>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // Point the GitHub links at this repository when served from <user>.github.io/<repo>/
+  var host = location.hostname.match(/^([^.]+)\.github\.io$/i);
+  if (host) {
+    var first = location.pathname.split("/").filter(Boolean)[0];
+    var repo = host[1] + "/" + (first && first !== "index.html" ? first : location.hostname);
+    document.querySelectorAll("[data-repo-link]").forEach(function (a) { a.href = "https://github.com/" + repo; });
+    document.querySelectorAll("[data-repo-name]").forEach(function (el) { el.textContent = repo; });
+  }
+
+  // Respect reduced-motion preferences: no autoplaying video
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.querySelectorAll("video").forEach(function (v) {
+      v.removeAttribute("autoplay"); v.pause(); v.controls = true;
+    });
+  }
+
+  // Typeset the equations
+  if (window.renderMathInElement) {
+    renderMathInElement(document.body, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "\\(", right: "\\)", display: false }
+      ],
+      throwOnError: false
+    });
+  }
+});
+</script>
+</body>
+</html>
