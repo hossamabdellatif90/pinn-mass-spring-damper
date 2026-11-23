@@ -29,14 +29,14 @@ The inverse PINN recovered **c = 4.003** (true 4, 0.07% off) and **k = 402.1** (
 solution over the full time window, using the default settings.
 
 **Project page:** enable GitHub Pages (see [below](#publish-the-project-page)) to get a write-up
-of the method with all figures at `https://<your-username>.github.io/pinn-mass-spring-damper/`.
+of the method with all figures at `https://<hossamabdellatif90>.github.io/pinn-mass-spring-damper/`.
 
 ---
 
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-username>/pinn-mass-spring-damper.git
+git clone https://github.com/<hossamabdellatif90>/pinn-mass-spring-damper.git
 cd pinn-mass-spring-damper
 
 # CPU-only PyTorch is a much smaller download; skip this line if you already have torch
@@ -199,7 +199,7 @@ The site in `docs/` is plain HTML with no build step.
 2. Open **Settings → Pages**.
 3. Under **Build and deployment**, choose **Deploy from a branch**, branch **main**, folder **/docs**, and save.
 
-After a minute the page is live at `https://<your-username>.github.io/pinn-mass-spring-damper/`.
+After a minute the page is live at `https://<hossamabdellatif90e>.github.io/pinn-mass-spring-damper/`.
 Its GitHub links fill in automatically from that address.
 
 ## References
